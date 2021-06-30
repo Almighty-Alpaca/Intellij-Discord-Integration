@@ -16,14 +16,18 @@
 
 rootProject.name = "JetBrains-Discord-Integration"
 
-include("icons")
-include("plugin")
-include("uploader")
-include("bot")
+include(":icons")
+include(":plugin")
+include(":uploader")
+include(":bot")
+include(":discord-game-sdk:jvm")
+include(":discord-game-sdk:native")
+include(":tools:jniheaders")
 
 pluginManagement {
     repositories {
         gradlePluginPortal()
+        mavenCentral()
         maven(url = "https://palantir.bintray.com/releases")
     }
 
@@ -31,7 +35,6 @@ pluginManagement {
         this.load(java.nio.file.Files.newBufferedReader(settingsDir.toPath().resolve("gradle.properties")))
     }
 
-    val versionExactDependencies: String by properties
     val versionGitVersions: String by properties
     val versionIntelliJ: String by properties
     val versionShadow: String by properties
@@ -44,6 +47,5 @@ pluginManagement {
         id("org.jetbrains.intellij") version versionIntelliJ
         id("com.github.johnrengelman.shadow") version versionShadow
         id("com.palantir.git-version") version versionGitVersions
-        id("com.palantir.baseline-exact-dependencies") version versionExactDependencies
     }
 }

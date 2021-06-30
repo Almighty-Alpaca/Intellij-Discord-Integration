@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-@file:Suppress("SuspiciousCollectionReassignment")
-
 import com.github.benmanes.gradle.versions.updates.gradle.GradleReleaseChannel
 import com.palantir.gradle.gitversion.VersionDetails
 import groovy.lang.Closure
@@ -26,7 +24,6 @@ plugins {
     kotlin("jvm") apply false
     id("com.github.ben-manes.versions")
     id("com.palantir.git-version")
-    id("com.palantir.baseline-exact-dependencies")
 }
 
 group = "com.almightyalpaca.jetbrains.plugins.discord"
@@ -44,7 +41,6 @@ project.version = version
 allprojects {
     repositories {
         mavenCentral()
-        jcenter()
     }
 
     fun secret(name: String) {
@@ -57,12 +53,10 @@ allprojects {
 }
 
 subprojects {
-    apply(plugin = "com.palantir.baseline-exact-dependencies")
-
     group = rootProject.group.toString() + "." + project.name.toLowerCase()
     version = rootProject.version
 
-    val secrets = rootProject.file("secrets.gradle.kts")
+    val secrets: File = rootProject.file("secrets.gradle.kts")
     if (secrets.exists()) {
         apply(from = secrets)
     }
@@ -70,18 +64,17 @@ subprojects {
     tasks {
         withType<KotlinCompile> {
             kotlinOptions {
-                jvmTarget = "1.8"
+                apiVersion = "1.4"
+                languageVersion = "1.4"
+                jvmTarget = "11"
+                @Suppress("SuspiciousCollectionReassignment")
                 freeCompilerArgs += "-Xjvm-default=enable"
             }
         }
 
         withType<JavaCompile> {
-            targetCompatibility = "1.8"
-            sourceCompatibility = "1.8"
-
-            if (JavaVersion.current() >= JavaVersion.VERSION_1_9) {
-                options.compilerArgs as MutableList<String> += listOf("--release", "8")
-            }
+            @Suppress("UnstableApiUsage")
+            options.release.set(11)
         }
     }
 }
@@ -93,10 +86,20 @@ tasks {
         gradleReleaseChannel = GradleReleaseChannel.CURRENT.toString()
 
         rejectVersionIf {
-            sequenceOf("alpha", "beta", "rc", "cr", "m", "preview", "eap", "pr", """M\d+""")
-                .map { qualifier -> Regex(""".*[.-]$qualifier(release|[.\d-_])*""", RegexOption.IGNORE_CASE) }
-                .any { regex -> regex.matches(candidate.version) }
+            sequenceOf("alpha", "beta", "rc", "cr", "m", "preview", "eap", "pr", "M")
+                .map { qualifier -> Regex("""[+_.-]?$qualifier[.\d-_]*$""", RegexOption.IGNORE_CASE) }
+                .any { regex -> regex.containsMatchIn(candidate.version) }
+                .apply {
+                    if (!this) {
+                        println("Accepting ${candidate.version}")
+                    }
+
+
+                    this
+                }
         }
+
+        rejectVersionIf { candidate.group.startsWith("org.jetbrains.kotlin") && candidate.version != currentVersion }
     }
 
     withType<Wrapper> {
@@ -106,7 +109,7 @@ tasks {
         gradleVersion = versionGradle
     }
 
-    create<Delete>("clean") {
+    register<Delete>("clean") {
         group = "build"
 
         val regex = Regex("""JetBrains-Discord-Integration-\d+.\d+.\d+(?:\+\d+)?.zip""")
@@ -118,7 +121,7 @@ tasks {
         delete(project.buildDir)
     }
 
-    create("default") {
+    register("default") {
         val buildPlugin = project.tasks.getByPath("plugin:buildPlugin") as Zip
 
         dependsOn(buildPlugin)
@@ -131,7 +134,7 @@ tasks {
         }
     }
 
-    create<Delete>("clean-sandbox") {
+    register<Delete>("clean-sandbox") {
         group = "build"
 
         delete(project.file(".sandbox"))

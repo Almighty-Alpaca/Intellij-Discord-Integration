@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-@file:Suppress("SuspiciousCollectionReassignment")
-
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import org.jsoup.Jsoup
@@ -36,29 +34,28 @@ dependencies {
     val versionJUnit: String by project
     val versionAntlr: String by project
 
-    implementation(project(path = ":icons", configuration = "minimizedJar")) {
-        exclude(group = "org.slf4j", module = "slf4j-api")
-        exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
-        exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-coroutines-core")
-    }
+    implementation(project(path = ":icons", configuration = "minimizedJar"))
+
+    // Not sure why selecting the default configuration explicitly is required here but whatever
+    implementation(project(path = ":discord-game-sdk:jvm", configuration = "default"))
 
     implementation(group = "club.minnced", name = "java-discord-rpc", version = versionRpc)
 
-    implementation(group = "com.squareup.okhttp3", name = "okhttp", version = versionOkHttp) {
-        exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
-        exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib-common")
-        exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-coroutines-core")
-    }
+    implementation(group = "com.squareup.okhttp3", name = "okhttp", version = versionOkHttp)
 
     implementation(group = "commons-io", name = "commons-io", version = versionCommonsIo)
 
     implementation(group = "com.fasterxml.jackson.dataformat", name = "jackson-dataformat-yaml", version = versionJackson)
 
-    antlr("org.antlr", name = "antlr4", version = versionAntlr)
-    implementation("org.antlr", name = "antlr4-runtime", version = versionAntlr)
+    antlr(group = "org.antlr", name = "antlr4", version = versionAntlr)
+    implementation(group = "org.antlr", name = "antlr4-runtime", version = versionAntlr)
 
     testImplementation(group = "org.junit.jupiter", name = "junit-jupiter-api", version = versionJUnit)
     testRuntimeOnly(group = "org.junit.jupiter", name = "junit-jupiter-engine", version = versionJUnit)
+}
+
+repositories {
+    jcenter() // TODO: remove once using GameSDK
 }
 
 val generatedSourceDir = project.file("src/generated")
@@ -72,32 +69,64 @@ sourceSets {
     }
 }
 
-// https://github.com/gradle/gradle/issues/820
-configurations {
-    compile {
-        setExtendsFrom(extendsFrom.filter { it != antlr.get() })
-    }
-}
-
 val isCI by lazy { System.getenv("CI") != null }
 
 intellij {
     val versionIde: String by project
 
-    version = versionIde
+    version.set(versionIde)
 
-    downloadSources = !isCI
+    downloadSources.set(!isCI)
 
-    updateSinceUntilBuild = false
+    updateSinceUntilBuild.set(false)
 
-    sandboxDirectory = "${project.rootDir.absolutePath}/.sandbox"
+    sandboxDir.set("${project.rootDir.absolutePath}/.sandbox")
 
-    instrumentCode = false
+    instrumentCode.set(false)
 
-    setPlugins("git4idea")
+    plugins.add("git4idea")
 
     // For testing with a custom theme
     // setPlugins("git4idea", "com.chrisrm.idea.MaterialThemeUI:3.10.0")
+}
+
+configurations {
+    // https://github.com/gradle/gradle/issues/820
+    compile {
+        setExtendsFrom(extendsFrom.filter { it != antlr.get() })
+    }
+
+    all {
+        if (name.contains("kotlin", ignoreCase = true) || name.contains("idea", ignoreCase = true)) {
+            return@all
+        }
+
+        resolutionStrategy.dependencySubstitution {
+            val ideaDependency = intellij.getIdeaDependency(project).let { "com.jetbrains:${it.name}:${it.version}" }
+
+            val ideaModules = listOf(
+                "org.jetbrains.kotlin:kotlin-reflect",
+                "org.jetbrains.kotlin:kotlin-stdlib",
+                "org.jetbrains.kotlin:kotlin-stdlib-common",
+                "org.jetbrains.kotlin:kotlin-stdlib-jdk7",
+                "org.jetbrains.kotlin:kotlin-stdlib-jdk8",
+                "org.jetbrains.kotlin:kotlin-test",
+                "org.jetbrains.kotlin:kotlin-test-common",
+                "org.jetbrains.kotlinx:kotlinx-coroutines-core",
+                "org.jetbrains.kotlinx:kotlinx-coroutines-core-common",
+                "org.jetbrains.kotlinx:kotlinx-coroutines-jdk8",
+                "org.slf4j:slf4j-api"
+            )
+
+            all action@{
+                val requested = requested as? ModuleComponentSelector ?: return@action
+
+                if ("${requested.group}:${requested.module}" in ideaModules) {
+                    useTarget(ideaDependency)
+                }
+            }
+        }
+    }
 }
 
 tasks {
@@ -106,7 +135,7 @@ tasks {
 
         archiveClassifier.set("minimized")
 
-        from(sourceSets.main.map(org.gradle.api.tasks.SourceSet::getOutput))
+        from(sourceSets.main.map(SourceSet::getOutput))
 
         val iconPaths = arrayOf(
             Regex("""/?discord/images/.*\.png""")
@@ -115,41 +144,36 @@ tasks {
         transform(PngOptimizingTransformer(128, *iconPaths))
     }
 
-    checkUnusedDependencies {
-        ignore("com.jetbrains", "ideaIU")
-    }
-
-    checkImplicitDependencies {
-        ignore("org.jetbrains", "annotations")
-    }
-
     patchPluginXml {
-        changeNotes(readInfoFile(project.file("changelog.md")))
-        pluginDescription(readInfoFile(project.file("description.md")))
+        changeNotes.set(readInfoFile(project.file("changelog.md")))
+        pluginDescription.set(readInfoFile(project.file("description.md")))
     }
 
     runIde {
-        // use local icons
+        // Use local icons
         // environment["com.almightyalpaca.jetbrains.plugins.discord.plugin.source"] = "local:${project(":icons").parent!!.projectDir.absolutePath}"
 
-        // use icons from specific bintray repo
+        // Use icons from specific bintray repo
         // environment["com.almightyalpaca.jetbrains.plugins.discord.plugin.source"] = "bintray:almightyalpaca/JetBrains-Discord-Integration/Icons"
 
-        // use classpath icons
+        // Use classpath icons
         // environment["com.almightyalpaca.jetbrains.plugins.discord.plugin.source"] = "classpath:discord"
+
+        // Use Discord GameSDK
+        environment["com.almightyalpaca.jetbrains.plugins.discord.plugin.rpc.connection"] = "gamesdk"
     }
 
     publishPlugin {
         if (project.extra.has("JETBRAINS_TOKEN")) {
-            token(project.extra["JETBRAINS_TOKEN"])
+            token.set(project.extra["JETBRAINS_TOKEN"] as String?)
         } else {
             enabled = false
         }
 
         if (!(version as String).matches(Regex("""\d+\.\d+\.\d+"""))) {
-            channels("eap")
+            channels.set(listOf("eap"))
         } else {
-            channels("default", "eap")
+            channels.set(listOf("default", "eap"))
         }
     }
 
@@ -165,7 +189,7 @@ tasks {
     prepareSandbox task@{
         dependsOn(minimizedJar)
 
-        pluginJar(minimizedJar.map { it.archiveFile }.get())
+        pluginJar.set(minimizedJar.flatMap { it.archiveFile })
     }
 
     build {
@@ -178,6 +202,7 @@ tasks {
 
     withType<KotlinCompile> {
         kotlinOptions {
+            @Suppress("SuspiciousCollectionReassignment")
             freeCompilerArgs += "-Xuse-experimental=kotlin.Experimental"
         }
     }
@@ -187,6 +212,14 @@ tasks {
 
         arguments = arguments + listOf("-package", packageName, "-no-listener")
         outputDirectory = generatedJavaSourceDir.resolve(packageName.replace('.', File.separatorChar))
+    }
+
+    compileKotlin {
+        dependsOn(generateGrammarSource)
+    }
+
+    compileTestKotlin {
+        dependsOn(generateTestGrammarSource)
     }
 
     clean {

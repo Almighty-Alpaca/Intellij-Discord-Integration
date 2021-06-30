@@ -20,11 +20,8 @@ plugins {
     kotlin("jvm")
 }
 
-version = "1.0.0-SNAPSHOT"
-
 repositories {
     mavenCentral()
-    jcenter()
     maven { url = URI("https://kotlin.bintray.com/kotlinx") }
 }
 
@@ -38,6 +35,7 @@ dependencies {
 
     implementation(project(":icons"))
 
+    implementation(platform(kotlin("bom")))
     implementation(kotlin("stdlib"))
 
     implementation(platform(kotlinx("coroutines-bom", versionCoroutines)))
@@ -56,15 +54,11 @@ dependencies {
     implementation(group = "org.apache.commons", name = "commons-text", version = versionCommonsText)
     implementation(group = "commons-io", name = "commons-io", version = versionCommonsIo)
 
-    implementation(platform("com.fasterxml.jackson:jackson-bom:$versionJackson"))
-    implementation(group = "com.fasterxml.jackson.core", name = "jackson-databind")
+    implementation(platform(jackson("bom", versionJackson)))
+    implementation(jacksonCore("databind"))
 }
 
 tasks {
-    checkImplicitDependencies {
-        ignore("org.jetbrains", "annotations")
-    }
-
     val graphsDot by registering(JavaExec::class) task@{
         sourceSets.main.configure { this@task.classpath = runtimeClasspath }
         main = "com.almightyalpaca.jetbrains.plugins.discord.uploader.graphs.GraphsKt"
